@@ -1,2 +1,3 @@
-# PhotoEditingDemo
-a photo editing demo for photo assist project
+# Photo-Editing-Demo
+
+A photo background edit demo for photo assist project.

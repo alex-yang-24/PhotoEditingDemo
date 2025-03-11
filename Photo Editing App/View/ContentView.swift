@@ -24,7 +24,8 @@ struct ContentView: View {
     
     @State private var resImage: UIImage?
     @State private var maskImage: CIImage?
-    @State private var blurRadius: Float = 0.0
+    @State private var processedBG: CIImage?
+    @State private var blurRadius:Float = 0.0
     
     @State private var currentFilter = CIFilter.sepiaTone()
     let context = CIContext()
@@ -42,7 +43,7 @@ struct ContentView: View {
 //                        DrawingScreen()
 //                            .environmentObject(model)
 //                            .blur(radius: blurAmount)
-//                        
+//
 //                            .toolbar {
 //                                ToolbarItem(placement: .navigationBarLeading) {
 //                                    Button {
@@ -68,23 +69,23 @@ struct ContentView: View {
                             }
                             .padding()
                             
-                            Slider(value: $blurRadius, in: 0...100) { _ in
-                                applyBlurAndCombine(pickImage, maskImage: self.maskImage ?? model.maskImage, radius: blurRadius)
+                            Slider(value: $blurRadius, in: 0...20) { _ in
+                                applyBlurAndCombine(CIImage(image: pickImage)!, maskImage: self.maskImage ?? model.maskImage, radius: blurRadius)
                             }
                             .padding()
-                            Spacer()
-//                            HStack {
-//                                Text("Blur")
-//                                Slider(value: $blurAmount, in: 0...10)
-//
-//                                Button(action: actionSheet) {
-//                                    Image(systemName: "square.and.arrow.up")
-//                                        .resizable()
-//                                        .aspectRatio(contentMode: .fit)
-//                                        .frame(width: 36, height: 36)
-//                                }
-//                            }
-//                            .padding(.horizontal)
+                            
+                            HStack {
+                                Text("Blur")
+                                Slider(value: $blurAmount, in: 0...10)
+                                
+                                Button(action: actionSheet) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 36, height: 36)
+                                }
+                            }
+                            .padding(.horizontal)
                         }
                         .toolbar {
                             ToolbarItem(placement: .navigationBarTrailing) {
@@ -94,13 +95,17 @@ struct ContentView: View {
                             }
                             ToolbarItem(placement: .navigationBarTrailing) {
                                 Button {
+                                    
                                     model.textBoxes.append(TextBox())
+                                    
                                     model.currentIndex = model.textBoxes.count - 1
+                                    
                                     withAnimation {
                                         model.addNewBox.toggle()
                                     }
                                     model.toolPicker.setVisible(false, forFirstResponder: model.canvas)
                                     model.canvas.resignFirstResponder()
+                                    
                                 } label: {
                                     Image(systemName: "plus")
                                 }
@@ -114,13 +119,14 @@ struct ContentView: View {
                             }
                         }
                     } else {
+                        
                         Button {
                             model.showImagePicker.toggle()
                         } label: {
                             Image(systemName: "photo.fill")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .frame(width: 200, height: 200, alignment: .center)
+                                .frame(width: 350, height: 350, alignment: .center)
                         }
                     }
                 }
@@ -133,7 +139,7 @@ struct ContentView: View {
                         .resizable()
                         .renderingMode(.original)
                         .foregroundColor(Color(red: 4 / 255, green: 150 / 255, blue: 255 / 255))
-                        .frame(width: 35, height: 35)
+                        .frame(width: 50, height: 50)
                         .cornerRadius(10)
                 })
                 .sheet(isPresented: self.$showCameraPicker) {
@@ -196,23 +202,22 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
             }
         }
+        
         .sheet(isPresented: $model.showImagePicker, content: {
             ImagePicker(showPicker: $model.showImagePicker, imageData: $model.imageData, maskImage: $model.maskImage)
         })
         .alert(isPresented: $model.showAlert, content: {
             Alert(title: Text("Alert"), message: Text(model.message), dismissButton: .destructive(Text("Ok")))
         })
-        .onReceive(model.$imageData) { newValue in
-            if let uiImage = UIImage(data: newValue) {
-                resImage = uiImage
-            }
-        }
+        
     }
+    
     func actionSheet() {
-       guard let urlShare = URL(string: "https://facebook.com") else { return }
-       let activityVC = UIActivityViewController(activityItems: [urlShare], applicationActivities: nil)
-       UIApplication.shared.windows.first?.rootViewController?.present(activityVC, animated: true, completion: nil)
-    }
+           guard let urlShare = URL(string: "https://facebook.com") else { return }
+           let activityVC = UIActivityViewController(activityItems: [urlShare], applicationActivities: nil)
+           UIApplication.shared.windows.first?.rootViewController?.present(activityVC, animated: true, completion: nil)
+       }
+    
     func processImage(inputImage: UIImage) -> CIImage? {
         let ciImage = CIImage(image: inputImage)!
         let request = VNGenerateForegroundInstanceMaskRequest()
@@ -221,17 +226,27 @@ struct ContentView: View {
         //return ciImage
 
         do {
+            print("enter try image process")
             try requestHandler.perform([request])
-            print("requestHandler perform request")
+            print("tried to request perform")
             if let result = request.results?.first {
-                print("Get request.results?.first")
+                print("got result from request results")
                 let maskPixelBuffer = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: requestHandler)
                 //let maskPixelBuffer = try result.globalSegmentationMask?.pixelBuffer
 //                return CIImage(cvPixelBuffer: mask)
 //            }
 //            if let maskPixelBuffer = request.results?.first?.generateScaledMaskForImage(forInstances: .allInstances, from: requestHandler) {
-                print("try result.generateScaledMaskForImage")
+                print("tried to get mask pixel buffer")
                 maskImage = CIImage(cvPixelBuffer: maskPixelBuffer)
+                let invertFilter = CIFilter.colorInvert()
+                invertFilter.inputImage = maskImage
+                guard let invertedMask = invertFilter.outputImage else { return nil }
+                
+                let blendFilter = CIFilter.blendWithMask()
+                blendFilter.inputImage = ciImage
+                blendFilter.maskImage = invertedMask
+                blendFilter.backgroundImage = nil
+                processedBG = blendFilter.outputImage
                 
 //                let finalImage = applyBlurAndCombine(ciImage, maskImage: maskImage)
 //                return finalImage
@@ -243,11 +258,10 @@ struct ContentView: View {
         return nil
     }
 
-    func applyBlurAndCombine(_ uiImage: UIImage, maskImage: CIImage, radius: Float) -> UIImage {
+    func applyBlurAndCombine(_ image: CIImage, maskImage: CIImage, radius: Float) -> UIImage {
         let context = CIContext()
         let filter = CIFilter.gaussianBlur()
-        let image = CIImage(image: uiImage)!
-        filter.inputImage = image
+        filter.inputImage = self.processedBG ?? image
         filter.radius = radius
 
         guard let blurredImage = filter.outputImage else { return UIImage(ciImage: image) }
@@ -259,7 +273,7 @@ struct ContentView: View {
         
         if let outputImage = blendFilter.outputImage,
            let cgImage = context.createCGImage(outputImage, from: image.extent) {
-            resImage = UIImage(cgImage: cgImage, scale: uiImage.scale, orientation: uiImage.imageOrientation)
+            resImage = UIImage(cgImage: cgImage)
             return UIImage(cgImage: cgImage)
         }
         resImage = UIImage(ciImage: image)
